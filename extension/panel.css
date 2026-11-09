@@ -1,0 +1,36 @@
+:root { color-scheme: dark; font: 15px/1.45 system-ui, sans-serif; background: #111320; color: #f2f3fa; }
+body { margin: 0 auto; padding: 15px; width: 320px; }
+header { margin-bottom: 12px; }
+.eyebrow { color: #aa9dff; font-size: 11px; font-weight: 700; letter-spacing: .13em; }
+h1 { font-size: 26px; margin: 3px 0 0; }
+h2 { font-size: 16px; margin: 0 0 12px; }
+section { background: #1b1e30; border: 1px solid #303449; border-radius: 12px; padding: 12px; margin-bottom: 8px; }
+p { color: #c6c8da; margin: 9px 0 0; overflow-wrap: anywhere; }
+input, select, button { font: inherit; border-radius: 8px; padding: 8px 10px; min-width: 0; }
+input, select { box-sizing: border-box; background: #111320; color: inherit; border: 1px solid #555a74; }
+button { cursor: pointer; border: 1px solid transparent; background: #b8acff; color: #181333; font-weight: 700; white-space: nowrap; }
+button.secondary { background: #2d324c; color: #f2f3fa; border-color: #555a74; }
+button:disabled { cursor: default; opacity: .48; }
+:focus-visible { outline: 2px solid #e2dbff; outline-offset: 2px; }
+.row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.row { margin-top: 9px; }
+#origins { flex: 1; }
+#invite-link { width: 100%; margin-top: 9px; }
+[hidden] { display: none !important; }
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand img { width: 36px; height: 36px; object-fit: contain; }
+details { background: #1b1e30; border: 1px solid #303449; border-radius: 12px; padding: 11px; }
+summary { cursor: pointer; font-weight: 700; }
+#profile-form { margin-top: 10px; }
+#profile-form label { display: block; color: #c6c8da; font-size: 13px; }
+#profile-name, #profile-avatar { width: 100%; }
+#profile-avatar { padding: 4px; font-size: 11px; }
+.profile-row { display: grid; grid-template-columns: 48px minmax(0, 1fr); align-items: center; gap: 10px; margin-bottom: 8px; }
+.avatar-preview { width: 48px; height: 48px; display: grid; place-items: center; background: #313652; border-radius: 50%; overflow: hidden; font-weight: 700; }
+.avatar-preview img { width: 100%; height: 100%; object-fit: cover; }
+#remove-avatar { margin-top: 4px; padding: 3px 6px; font-size: 11px; }
+#profile-color { width: 36px; height: 32px; padding: 2px; }
+#updates { margin-top: 8px; }
+#updates label { display: block; margin: 8px 0 4px; font-size: 13px; }
+#release-repo { width: 100%; }
+#release-link { color: #c3a6ff; display: inline-block; margin-top: 6px; }

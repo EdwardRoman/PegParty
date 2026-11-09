@@ -1,0 +1,64 @@
+{
+  "manifest_version": 3,
+  "name": "PegParty",
+  "version": "0.4.0",
+  "description": "Watch together with shared controls, party chat, and invite links.",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "scripting",
+    "webNavigation",
+    "alarms",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://*.67movies.gd/*",
+    "https://*.67movies.app/*",
+    "https://*.67movies.st/*",
+    "https://*.67movies.net/*",
+    "https://*.67movies.org/*",
+    "https://*.67movies.to/*",
+    "http://127.0.0.1/*",
+    "https://pegparty-relay.onrender.com/*",
+    "https://api.github.com/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "PegParty",
+    "default_popup": "panel.html",
+    "default_icon": {
+      "16": "icons/pegparty-16.png",
+      "32": "icons/pegparty-32.png",
+      "48": "icons/pegparty-48.png",
+      "128": "icons/pegparty-128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.67movies.gd/*",
+        "https://*.67movies.app/*",
+        "https://*.67movies.st/*",
+        "https://*.67movies.net/*",
+        "https://*.67movies.org/*",
+        "https://*.67movies.to/*",
+        "http://127.0.0.1/*"
+      ],
+      "js": [
+        "links.js",
+        "invite.js"
+      ],
+      "run_at": "document_start"
+    }
+  ],
+  "icons": {
+    "16": "icons/pegparty-16.png",
+    "32": "icons/pegparty-32.png",
+    "48": "icons/pegparty-48.png",
+    "128": "icons/pegparty-128.png"
+  }
+}

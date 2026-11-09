@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PegParty</title><link rel="stylesheet" href="panel.css">
+</head>
+<body>
+  <header class="brand"><img src="icons/pegparty-48.png" alt=""><div><span class="eyebrow">WATCH TOGETHER</span><h1>PegParty</h1></div></header>
+  <main>
+    <section id="player-section" aria-labelledby="player-heading" hidden>
+      <h2 id="player-heading">Player</h2>
+      <p id="player-status" aria-live="polite">Start the video, then find its player.</p>
+      <div class="row"><button id="scan" class="secondary" type="button">Find player</button></div>
+      <div id="permission-row" class="row" hidden>
+        <select id="origins" aria-label="Embedded player domain"></select>
+        <button id="allow" type="button">Allow player</button>
+      </div>
+    </section>
+    <section aria-labelledby="room-heading">
+      <h2 id="room-heading">Party</h2>
+      <div id="setup" class="row">
+        <button id="create" type="button" hidden>Create party</button>
+        <button id="join" type="button" hidden>Join party</button>
+        <button id="pair" type="button" hidden>Use this relay</button>
+      </div>
+      <div id="session" hidden>
+        <p id="members"></p>
+        <div class="row">
+          <button id="copy" type="button">Copy invite link</button>
+          <button id="chat" type="button">Toggle chat</button>
+          <button id="resync" class="secondary" type="button">Resync</button>
+          <button id="leave" class="secondary" type="button">Leave</button>
+        </div>
+        <input id="invite-link" aria-label="Invite link" readonly hidden>
+      </div>
+      <p id="room-status" aria-live="polite">Open a 67movies watch page or a PegParty invite.</p>
+    </section>
+    <details id="profile-settings">
+      <summary>Your profile</summary>
+      <form id="profile-form">
+        <div class="profile-row">
+          <span id="avatar-preview" class="avatar-preview">P</span>
+          <div>
+            <label for="profile-avatar">Avatar image</label>
+            <input id="profile-avatar" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
+            <button id="remove-avatar" class="secondary" type="button">Remove image</button>
+          </div>
+        </div>
+        <label for="profile-name">Display name</label>
+        <input id="profile-name" maxlength="32" placeholder="Guest">
+        <div class="row">
+          <label for="profile-color">Name color</label>
+          <input id="profile-color" type="color" value="#c3a6ff">
+          <button id="save-profile" type="submit">Save profile</button>
+        </div>
+        <p id="profile-status" aria-live="polite"></p>
+      </form>
+    </details>
+    <details id="updates">
+      <summary>Updates</summary>
+      <label for="release-repo">Public GitHub repository</label>
+      <input id="release-repo" type="text" placeholder="owner/repository" spellcheck="false">
+      <div class="row"><button id="check-release" type="button">Check now</button></div>
+      <p id="release-status" aria-live="polite"></p>
+      <a id="release-link" target="_blank" rel="noopener" hidden>View release</a>
+    </details>
+  </main>
+  <script src="links.js"></script>
+  <script src="config.js"></script>
+  <script src="relay-client.js"></script>
+  <script src="player-access.js"></script>
+  <script src="profile.js"></script>
+  <script src="updates.js"></script>
+  <script type="module" src="panel.js"></script>
+</body>
+</html>
