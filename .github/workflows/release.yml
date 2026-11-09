@@ -1,0 +1,38 @@
+name: Package PegParty release
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build browser ZIP
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version=$(python3 -c 'import json; print(json.load(open("extension/manifest.json"))["version"])')
+          if [ "$RELEASE_TAG" != "v$version" ]; then
+            echo "Release tag must match manifest version v$version" >&2
+            exit 1
+          fi
+          stage=$(mktemp -d)
+          mkdir "$stage/PegParty"
+          git archive HEAD extension relay README.md LICENSE | tar -x -C "$stage/PegParty"
+          python3 - "$stage/PegParty/extension/config.js" <<'PY'
+          import json
+          import os
+          import sys
+          with open(sys.argv[1], "a", encoding="utf-8") as config:
+              config.write("globalThis.PEGPARTY_RELEASE_REPO = " + json.dumps(os.environ["GITHUB_REPOSITORY"]) + ";\n")
+          PY
+          (cd "$stage" && zip -qr "$GITHUB_WORKSPACE/PegParty.zip" PegParty)
+      - name: Attach ZIP
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$RELEASE_TAG" PegParty.zip --clobber
