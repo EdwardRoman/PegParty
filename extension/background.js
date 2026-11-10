@@ -3,6 +3,7 @@ importScripts("links.js", "relay-client.js", "player-access.js");
 const rooms = new Map();
 const starting = new Set();
 const watchdog = "pegparty-watchdog";
+const syncInterval = 325;
 const roomKey = tabId => `party-${tabId}`;
 
 const ready = chrome.storage.session.get(null).then(saved => {
@@ -32,13 +33,13 @@ function updateSocial(session, data) {
   return true;
 }
 
-async function attachChat(entry, toggle = false) {
+async function attachChat(entry) {
   const { session } = entry;
   if (!session.social || !session.player || !entry.active) return;
   const selected = session.player.documentId;
-  if (!toggle && (entry.chatDocument === selected || entry.chatConnecting)) return;
-  entry.chatConnecting = true;
-  try {
+  if (entry.chatDocument === selected) return;
+  if (entry.chatConnecting) return entry.chatConnecting;
+  entry.chatConnecting = (async () => {
     const frames = await chrome.webNavigation.getAllFrames({ tabId: session.tabId });
     const frame = frames?.find(item => item.documentId === selected);
     if (!frame) return;
@@ -49,18 +50,29 @@ async function attachChat(entry, toggle = false) {
       outer = parent;
     }
     const locator = { embedded: Boolean(outer.frameId), url: outer.url, key: outer.documentId };
-    const target = { tabId: session.tabId, frameIds: [0] };
+    const top = frames.find(item => item.frameId === 0);
+    if (!top) return;
     if (!entry.active || session.player?.documentId !== selected) return;
-    await chrome.scripting.executeScript({ target, files: ["chat-layout.js", "chat.js"] });
-    if (!entry.active || session.player?.documentId !== selected) return;
-    await chrome.tabs.sendMessage(session.tabId, { type: "pegparty-chat-view", locator, toggle }, { frameId: 0 });
-    entry.chatDocument = selected;
+    async function mount(documentId, view, fullscreenOnly) {
+      const target = { tabId: session.tabId, documentIds: [documentId] };
+      await chrome.scripting.executeScript({ target, files: ["chat-layout.js", "chat.js"] });
+      if (!entry.active || session.player?.documentId !== selected) return false;
+      // Configure in the exact isolated world that was just injected.
+      return execute(options => globalThis.pegPartyChat?.configure(options),
+        [{ locator: view, fullscreenOnly, open: Boolean(session.chatOpen) }], { tabId: session.tabId, documentId });
+    }
+    if (!await mount(top.documentId, locator, false)) return;
     if (locator.embedded) {
+      await mount(selected, { embedded: false, key: selected }, true).catch(() => {});
       await execute(key => window.parent.postMessage({ pegPartyDockKey: key }, "*"),
         [locator.key], { tabId: session.tabId, documentId: outer.documentId }).catch(() => {});
     }
+    if (entry.active && session.player?.documentId === selected) entry.chatDocument = selected;
+  })();
+  try {
+    return await entry.chatConnecting;
   } finally {
-    entry.chatConnecting = false;
+    entry.chatConnecting = null;
   }
 }
 
@@ -77,7 +89,7 @@ function save(entry) {
   return entry.write;
 }
 
-function schedule(entry, delay = 650) {
+function schedule(entry, delay = syncInterval) {
   if (!entry.active || entry.ticking) return;
   clearTimeout(entry.timer);
   entry.timer = setTimeout(() => tick(entry).catch(console.error), delay);
@@ -92,6 +104,8 @@ async function stop(entry) {
   entry.active = false;
   clearTimeout(entry.timer);
   const { session } = entry;
+  if (session.player) execute(id => globalThis.pegPartyPlayer?.release(id), [session.session], session.player)
+    .catch(() => {});
   const departure = leaveRelay(session);
   try {
     await entry.write.catch(() => {});
@@ -159,7 +173,7 @@ async function tick(entry) {
   const session = entry.session;
   const command = session.commands[0];
   let dirty = false;
-  let delay = 650;
+  let delay = syncInterval;
   function updateStatus(text) {
     if (session.status === text) return;
     session.status = text;
@@ -186,8 +200,13 @@ async function tick(entry) {
       return;
     }
     const { state, revision } = data;
-    const latency = Math.min((performance.now() - sent) / 2000, 0.25);
+    const roundTrip = performance.now() - sent;
+    entry.roundTrips ??= [];
+    entry.roundTrips.push(roundTrip);
+    if (entry.roundTrips.length > 8) entry.roundTrips.shift();
+    const latency = Math.min(Math.min(...entry.roundTrips) / 2000, 0.5);
     const position = state.position + (state.paused ? 0 : latency * state.rate);
+    const sampledAt = Date.now();
     if (!session.player && performance.now() >= (entry.scanAfter ?? 0)) {
       entry.scanAfter = performance.now() + 2500;
       if (await currentMovie(session.tabId) !== session.movie) {
@@ -209,7 +228,7 @@ async function tick(entry) {
     const selected = session.player;
     if (selected) attachChat(entry).catch(() => {});
     const outcome = selected && await execute(settings => globalThis.pegPartyPlayer?.apply(settings),
-      [{ ...state, position, revision, session: session.session, resync: session.resync }], selected)
+      [{ ...state, position, sampledAt, revision, session: session.session, resync: session.resync }], selected)
       .catch(() => "missing");
     if (!entry.active || selected !== session.player) return;
     switch (outcome) {
@@ -268,7 +287,12 @@ async function handlePopup(message) {
   if (message.type === "pegparty-toggle-chat") {
     if (!entry.session.social) throw new Error("The relay needs the PegParty chat update.");
     if (!entry.session.player) throw new Error("Find the player before opening chat.");
-    await attachChat(entry, true);
+    entry.session.chatOpen = !entry.session.chatOpen;
+    await save(entry);
+    await attachChat(entry);
+    if (entry.chatDocument !== entry.session.player?.documentId) {
+      throw new Error("The player is still connecting. Chat will open when it is ready.");
+    }
   }
   if (message.type === "pegparty-leave") return stop(entry);
   if (message.type === "pegparty-resync") {
@@ -304,8 +328,15 @@ async function handlePlayer({ command }, sender) {
 async function handleChat(message, sender) {
   await ready;
   const entry = rooms.get(sender.tab?.id);
-  if (sender.frameId !== 0 || !sender.url || !entry?.active || !entry.session.social ||
-      movieUrl(sender.url) !== entry.session.movie) return { ended: true };
+  if (!sender.url || !entry?.active || !entry.session.social) return { ended: true };
+  const sameMovie = sender.frameId === 0 ? movieUrl(sender.url) === entry.session.movie :
+    sender.documentId === entry.session.player?.documentId;
+  if (!sameMovie) return { ended: true };
+  if (message.type === "pegparty-chat-visibility") {
+    entry.session.chatOpen = Boolean(message.open);
+    await save(entry);
+    return { ok: true };
+  }
   if (message.type === "pegparty-send-chat") {
     const value = typeof message.value === "string" ? message.value.trim() : "";
     if (!value || value.length > 500) throw new Error("Enter a message up to 500 characters.");
@@ -315,6 +346,7 @@ async function handleChat(message, sender) {
   const { cursor, rosterVersion, roster, events } = entry.session.social;
   return {
     cursor, rosterVersion, room: entry.session.session, self: entry.session.self,
+    open: Boolean(entry.session.chatOpen),
     ...(message.room !== entry.session.session || message.rosterVersion !== rosterVersion ? { roster } : {}),
     events: events.filter(event => message.room !== entry.session.session || event.id > (message.after ?? 0))
   };
@@ -338,7 +370,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     handlePlayer(message, sender).catch(console.error);
     return;
   }
-  if (message.type === "pegparty-chat-state" || message.type === "pegparty-send-chat") {
+  if (["pegparty-chat-state", "pegparty-send-chat", "pegparty-chat-visibility"].includes(message.type)) {
     handleChat(message, sender).then(respond, error => respond({ error: error.message }));
     return true;
   }

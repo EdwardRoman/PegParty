@@ -1,6 +1,5 @@
 (() => {
   if (globalThis.pegPartyChat) return;
-  globalThis.pegPartyChat = true;
 
   const host = document.createElement("pegparty-chat");
   host.hidden = true;
@@ -33,7 +32,9 @@
     input { background: #11121b; flex: 1; min-width: 0; }
     form button { background: #bc9df8; color: #20122e; }
     .show, .toast { position: fixed; background: #171824ed; border: 1px solid #5a506c; box-shadow: 0 3px 14px #0007; }
-    .show { transform: translateX(-50%); }
+    .show, .fullscreen { border-radius: 6px 0 0 6px; width: 32px; height: 36px;
+      padding: 0; text-align: center; font-size: 21px; }
+    .fullscreen { position: fixed; background: #171824ed; font-size: 16px; }
     .toast { pointer-events: none; padding: 9px 12px; border-radius: 9px; overflow-wrap: anywhere; }
     .status { padding: 0 10px 8px; margin: 0; color: #b8b3c9; font-size: 12px; }
   `);
@@ -49,11 +50,13 @@
 
   const panel = make(root, "section");
   panel.hidden = true;
-  const reveal = make(root, "button", "Show chat", "show");
+  const reveal = make(root, "button", "‹", "show");
   reveal.hidden = true;
   const toast = make(root, "div", "", "toast");
   toast.hidden = true;
-  const layout = globalThis.pegPartyChatLayout.mount(panel, reveal, toast);
+  const fullscreen = make(root, "button", "⛶", "fullscreen");
+  fullscreen.hidden = true;
+  const layout = globalThis.pegPartyChatLayout.mount(host, panel, reveal, toast, fullscreen);
   panel.setAttribute("aria-label", "PegParty chat");
   const header = make(panel, "header");
   make(header, "strong", "PegParty chat");
@@ -78,25 +81,43 @@
 
   let timer, toastTimer;
   let open = false;
+  let visibilityChange = 0;
+  let savingVisibility = false;
   let reading = false;
   let room, cursor, rosterVersion;
   document.documentElement.append(host);
 
   function toggle(show) {
     open = show;
+    reveal.textContent = show ? "›" : "‹";
+    reveal.title = show ? "Hide chat" : "Show chat";
+    reveal.setAttribute("aria-label", reveal.title);
+    reveal.setAttribute("aria-expanded", String(show));
     layout.show(show);
-    if (show && !feed.hidden) feed.scrollTop = feed.scrollHeight;
+    if (show) feed.scrollTop = feed.scrollHeight;
   }
 
-  reveal.onclick = () => toggle(true);
-  hide.onclick = () => toggle(false);
+  async function changeVisibility(show) {
+    const change = ++visibilityChange;
+    savingVisibility = true;
+    toggle(show);
+    try {
+      await chrome.runtime.sendMessage({ type: "pegparty-chat-visibility", open: show });
+    } finally {
+      if (change === visibilityChange) savingVisibility = false;
+    }
+  }
+
+  reveal.onclick = () => changeVisibility(!open).catch(error => showStatus(error.message));
+  hide.onclick = () => changeVisibility(false).catch(error => showStatus(error.message));
+  fullscreen.onclick = () => layout.fullscreen().catch(error => showStatus(error.message));
   members.onclick = () => {
     roster.hidden = !roster.hidden;
     members.setAttribute("aria-expanded", String(!roster.hidden));
   };
   panel.addEventListener("keydown", event => {
     event.stopPropagation();
-    if (event.key === "Escape") toggle(false);
+    if (event.key === "Escape" && !document.fullscreenElement) hide.onclick();
   });
 
   function colored(parent, text, color) {
@@ -157,6 +178,8 @@
   async function refresh() {
     if (reading || host.hidden) return;
     reading = true;
+    const visibilityAtRequest = visibilityChange;
+    const mayApplyVisibility = !savingVisibility;
     try {
       const response = await chrome.runtime.sendMessage({
         type: "pegparty-chat-state", after: cursor, rosterVersion, room
@@ -181,6 +204,9 @@
         feed.replaceChildren();
         showStatus("");
       }
+      if (mayApplyVisibility && visibilityAtRequest === visibilityChange && typeof response.open === "boolean" &&
+          response.open !== open) toggle(response.open);
+      layout.refresh();
       room = response.room;
       cursor = response.cursor;
       rosterVersion = response.rosterVersion;
@@ -230,17 +256,16 @@
     }
   };
 
-  chrome.runtime.onMessage.addListener((message, _sender, respond) => {
-    if (message.type !== "pegparty-chat-view") return;
-    layout.configure(message.locator);
-    if (host.hidden) {
-      host.hidden = false;
-      toggle(Boolean(message.toggle));
-      refresh();
-      timer = setInterval(refresh, 850);
-    } else if (message.toggle) {
-      toggle(!open);
+  globalThis.pegPartyChat = {
+    configure({ locator, fullscreenOnly, open }) {
+      layout.configure(locator, fullscreenOnly);
+      if (host.hidden) {
+        host.hidden = false;
+        toggle(open);
+        refresh();
+        timer = setInterval(refresh, 650);
+      }
+      return true;
     }
-    respond({ ok: true });
-  });
+  };
 })();

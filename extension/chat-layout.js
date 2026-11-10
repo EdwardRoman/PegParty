@@ -30,12 +30,14 @@
     return target;
   }
 
-  function mount(panel, showButton, toast) {
+  function mount(host, panel, arrow, toast, fullscreenButton) {
     let target, locator, targetWindow, original, open = false, scheduled = 0;
+    let fullscreenOnly = false, managedFullscreen = false, nativeTarget;
     let dockWidth = 0;
     let below = false;
     let spacer;
-    const properties = ["width", "max-width", "min-width", "translate"];
+    const properties = ["width", "max-width", "min-width", "translate", "height",
+      "max-height", "position", "top", "left", "margin-top", "margin-left", "z-index"];
     const observer = new ResizeObserver(() => schedule());
 
     function restore() {
@@ -57,16 +59,21 @@
 
     function position() {
       const box = target?.getBoundingClientRect();
-      const usable = box && !document.fullscreenElement && box.width > 0 && box.height > 0;
+      const full = document.fullscreenElement;
+      const usable = box && (!fullscreenOnly || full) && full?.tagName !== "IFRAME" &&
+        full?.tagName !== "VIDEO" && (!full || full.contains(target)) && box.width > 0 && box.height > 0;
       panel.hidden = !open || !usable;
-      showButton.hidden = open || !usable;
+      arrow.hidden = !usable;
+      fullscreenButton.hidden = !usable || fullscreenOnly;
       toast.style.visibility = usable ? "visible" : "hidden";
       if (!open || !usable || !below) {
         spacer?.remove();
         spacer = undefined;
       }
       if (!usable) return;
-      const railLeft = Math.round(box.right);
+      const right = Math.min(window.innerWidth, box.right);
+      const floating = full && open && !dockWidth;
+      const railLeft = floating ? Math.max(0, right - Math.min(340, right * 0.4)) : Math.round(box.right);
       if (open && below) {
         if (!spacer && document.body) {
           spacer = document.createElement("div");
@@ -78,23 +85,48 @@
           top: `${box.bottom + 8}px`, width: `${Math.min(box.width, window.innerWidth)}px`, height: "300px" });
       } else if (open) {
         Object.assign(panel.style, { position: "fixed", left: `${railLeft}px`,
-          top: `${box.top}px`, width: `${dockWidth}px`, height: `${box.height}px` });
+          top: `${box.top}px`, width: `${floating ? right - railLeft : dockWidth}px`,
+          height: `${floating ? Math.max(160, box.height - 85) : box.height}px` });
       }
-      const right = Math.min(window.innerWidth, box.right);
+      const edge = open && !below ? railLeft : right;
       const top = Math.max(8, box.top + 12);
-      const middle = (Math.max(0, box.left) + right) / 2;
-      Object.assign(showButton.style, { left: `${middle}px`, top: `${top}px` });
-      Object.assign(toast.style, { right: `${window.innerWidth - right + 14}px`, top: `${top + 44}px`,
+      const arrowTop = Math.max(top, box.top + Math.min(100, box.height * 0.3));
+      Object.assign(arrow.style, { right: `${window.innerWidth - edge}px`, top: `${arrowTop}px` });
+      Object.assign(fullscreenButton.style, { right: `${window.innerWidth - edge}px`, top: `${arrowTop + 40}px` });
+      fullscreenButton.setAttribute("aria-label", full ? "Exit PegParty fullscreen" : "PegParty fullscreen");
+      fullscreenButton.title = full ? "Exit fullscreen" : "Fullscreen with PegParty chat";
+      Object.assign(toast.style, { right: `${window.innerWidth - edge + 38}px`, top: `${top}px`,
         maxWidth: `${Math.max(140, Math.min(box.width - 28, 340))}px` });
     }
 
     function layout() {
+      const full = document.fullscreenElement;
+      if (nativeTarget && nativeTarget !== full) {
+        nativeTarget = null;
+        attach(null);
+      }
       if (target && !target.isConnected) attach(null);
       if (!target && locator) attach(findTarget(locator, targetWindow));
+      if (full && !["VIDEO", "IFRAME"].includes(full.tagName) && target?.contains(full) && target !== full) {
+        nativeTarget = full;
+        attach(full);
+      }
       restore();
       dockWidth = 0;
       below = false;
-      if (target && open && !document.fullscreenElement) {
+      if (!full) managedFullscreen = false;
+      const mountPoint = full && !["VIDEO", "IFRAME"].includes(full.tagName) ? full : document.documentElement;
+      if (host.parentElement !== mountPoint) mountPoint.append(host);
+      const managed = full === document.documentElement && managedFullscreen && target;
+      if (managed) {
+        original = properties.map(key => [key, target.style.getPropertyValue(key), target.style.getPropertyPriority(key)]);
+        const overrides = { position: "fixed", top: "0", left: "0", width: "100vw",
+          "max-width": "100vw", "min-width": "0", height: "100vh", "max-height": "100vh",
+          "margin-left": "0", "margin-top": "0", "z-index": "2147483646", translate: "none" };
+        for (const [key, value] of Object.entries(overrides)) target.style.setProperty(key, value, "important");
+      }
+      if (target && open && (!fullscreenOnly || full) && (!full || (full !== target && full.contains(target) &&
+          !["VIDEO", "IFRAME"].includes(full.tagName)))) {
         const box = target.getBoundingClientRect();
         const available = Math.min(box.width, window.innerWidth - Math.max(0, box.left));
         if (available >= 690) {
@@ -103,7 +135,7 @@
           const border = css.boxSizing === "border-box" ? 0 :
             ["paddingLeft", "paddingRight", "borderLeftWidth", "borderRightWidth"]
               .reduce((sum, key) => sum + (parseFloat(css[key]) || 0), 0);
-          original = properties.map(key => [key, target.style.getPropertyValue(key), target.style.getPropertyPriority(key)]);
+          original ??= properties.map(key => [key, target.style.getPropertyValue(key), target.style.getPropertyPriority(key)]);
           const width = `${Math.max(0, Math.floor(available - dockWidth - border))}px`;
           target.style.setProperty("width", width, "important");
           target.style.setProperty("max-width", width, "important");
@@ -115,10 +147,11 @@
           if (fitted.width > available - dockWidth + 4 || fitted.left < -4 ||
               fitted.right + dockWidth > window.innerWidth + 4) {
             restore();
-            below = true;
+            below = !full;
+            dockWidth = 0;
           }
         } else {
-          below = true;
+          below = !full;
         }
       }
       position();
@@ -145,7 +178,8 @@
     });
 
     return {
-      configure(value) {
+      configure(value, frameOnly) {
+        fullscreenOnly = frameOnly;
         if (locator?.key !== value.key || locator?.url !== value.url || locator?.embedded !== value.embedded) {
           targetWindow = null;
           attach(null);
@@ -154,6 +188,22 @@
         layout();
       },
       show(value) { open = value; layout(); },
+      refresh() {
+        if (!target?.isConnected) layout();
+      },
+      async fullscreen() {
+        if (document.fullscreenElement) {
+          await document.exitFullscreen();
+        } else if (target) {
+          managedFullscreen = true;
+          try {
+            await document.documentElement.requestFullscreen();
+          } catch (error) {
+            managedFullscreen = false;
+            throw error;
+          }
+        }
+      },
       reset() { open = false; locator = targetWindow = null; attach(null); position(); }
     };
   }

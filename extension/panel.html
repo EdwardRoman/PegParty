@@ -56,15 +56,16 @@
         <p id="profile-status" aria-live="polite"></p>
       </form>
     </details>
-    <details id="updates">
-      <summary>Updates</summary>
-      <label for="release-repo">Public GitHub repository</label>
-      <input id="release-repo" type="text" placeholder="owner/repository" spellcheck="false">
-      <div class="row"><button id="check-release" type="button">Check now</button></div>
-      <p id="release-status" aria-live="polite"></p>
-      <a id="release-link" target="_blank" rel="noopener" hidden>View release</a>
-    </details>
   </main>
+  <footer class="version">
+    <p id="release-status" aria-live="polite"></p>
+    <a id="release-link" target="_blank" rel="noopener" hidden>Get update</a>
+    <button id="set-release-source" type="button" hidden>Set GitHub source</button>
+    <form id="release-source" hidden>
+      <input id="release-repo" aria-label="GitHub repository" type="text" placeholder="owner/repository" spellcheck="false">
+      <button id="check-release" type="submit">Save</button>
+    </form>
+  </footer>
   <script src="links.js"></script>
   <script src="config.js"></script>
   <script src="relay-client.js"></script>

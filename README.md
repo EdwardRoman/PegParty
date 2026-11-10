@@ -20,11 +20,15 @@ Open **Your profile** in the toolbar dropdown to save your display name, name
 color, and avatar on this browser. Upload a PNG, JPEG, WebP, or GIF, then
 click **Save profile**. PegParty uses a small square thumbnail for the avatar.
 
-After joining or creating a party, click **Show chat** on the player or
-**Toggle chat** in the toolbar dropdown. The chat docks to the right of
-the resized player. **Hide chat** restores the player's original width.
-On a narrow window, the chat goes below the player. Native video fullscreen
-hides the chat controls temporarily. Exiting fullscreen restores the layout.
+After joining or creating a party, click the **‹** arrow on the right edge
+of the player or **Toggle chat** in the toolbar dropdown. The chat docks
+to the right of the resized player. Click **›** beside the chat to restore
+the player's original width. On a narrow window, chat goes below the player.
+
+Use **⛶** beside the arrow for PegParty fullscreen with chat and message
+previews. Site fullscreen also works when the site fullscreen target is a
+player container. If the site's button fullscreens the video element by
+itself, exit that mode and use PegParty's **⛶** button.
 
 Use **Members** to see everyone in the room. The feed shows messages and who
 joined, left, paused, resumed, skipped, or changed speed. New messages from
@@ -38,14 +42,14 @@ of this folder to its root. Include `.github/workflows/release.yml`. The
 source code is MIT-licensed. The user-supplied icon artwork is separate.
 
 Publish a GitHub Release with a tag matching the extension's manifest
-version, such as `v0.4.0`. The included workflow attaches `PegParty.zip`
+version, such as `v0.4.1`. The included workflow attaches `PegParty.zip`
 and sets that release repository as the default in the downloaded extension.
 
-For an unpacked copy that came from somewhere else, open **Updates** in
-the toolbar dropdown, enter the public `owner/repository`, and click
-**Check now**. PegParty checks periodically when the dropdown opens and
-links to the latest published full release. Download and reload updates
-manually from the browser's extensions page.
+The toolbar footer shows the installed version and a **Get update** link
+when GitHub has a newer full release. If you installed the ZIP outside
+GitHub and haven't set a release source yet, use **Set GitHub source** in
+the footer and enter the public `owner/repository`. Download and reload
+updates manually from the browser's extensions page.
 
 ## Update the hosted relay for chat
 

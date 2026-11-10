@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PegParty",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Watch together with shared controls, party chat, and invite links.",
   "minimum_chrome_version": "116",
   "permissions": [

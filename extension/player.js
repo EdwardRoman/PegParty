@@ -34,7 +34,7 @@
     return false;
   }
 
-  function apply({ session, revision, position, duration, rate, paused, resync }) {
+  function apply({ session, revision, position, sampledAt = Date.now(), duration, rate, paused, resync }) {
     const item = video()?.item;
     if (!item) return "missing";
     if (Math.abs(item.duration - duration) > 5) return "different-video";
@@ -62,24 +62,36 @@
       }
     }
 
-    const target = Math.min(item.duration, Math.max(0, position));
-    const drift = Math.abs(item.currentTime - target);
+    const age = paused ? 0 : Math.min(0.5, Math.max(0, Date.now() - sampledAt) / 1000);
+    const target = Math.min(item.duration, Math.max(0, position + age * rate));
+    const error = target - item.currentTime;
+    const drift = Math.abs(error);
     const newPosition = revision !== control.revision || resync !== control.resync;
     const now = performance.now();
-    const inSync = paused ? 0.25 : 0.75;
-    // Periodic corrections stay within already-buffered media and never interrupt a stalled player.
-    const periodicSeek = !paused && !item.paused && drift > 3 && now - control.lastSeek >= 8000 &&
-      item.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA && buffered(item, target);
+    const inSync = paused ? 0.12 : 0.32;
+    const steady = !paused && !item.paused && item.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA;
+    // Correct a delayed resume once the target is buffered. Require two samples to ignore jitter.
+    control.largeDrift = steady && drift > 0.8 ? (control.largeDrift ?? 0) + 1 : 0;
+    const periodicSeek = control.largeDrift >= 2 && now - control.lastSeek >= 4000 && buffered(item, target);
     control.revision = revision;
     control.resync = resync;
-    if ((newPosition && drift > inSync) || periodicSeek) {
+    const seeking = (newPosition && drift > inSync) || periodicSeek;
+    if (seeking) {
       expected.seek = target;
       control.lastSeek = now;
+      control.largeDrift = 0;
       item.currentTime = target;
     }
-    if (item.playbackRate !== rate) {
-      expected.ratechange = rate;
-      item.playbackRate = rate;
+    // Close small offsets without a visible jump, then return to the party's chosen speed.
+    const sameDirection = Math.sign(control.correction) === Math.sign(error);
+    const threshold = sameDirection ? 0.08 : 0.2;
+    control.correction = steady && !seeking && drift > threshold ?
+      Math.sign(error) * Math.min(0.06, Math.ceil(drift / 0.25) * 0.02) : 0;
+    control.baseRate = rate;
+    const playbackRate = Math.min(4, Math.max(0.25, rate * (1 + control.correction)));
+    if (Math.abs(item.playbackRate - playbackRate) > 0.001) {
+      expected.ratechange = playbackRate;
+      item.playbackRate = playbackRate;
     }
     if (!paused && item.paused && !item.ended && !item.seeking) {
       const attempt = {};
@@ -99,6 +111,13 @@
       return "starting";
     }
     return "ready";
+  }
+
+  function release(session) {
+    if (controller?.session !== session) return;
+    const { item, baseRate, correction } = controller;
+    if (correction && baseRate) item.playbackRate = baseRate;
+    controller = null;
   }
 
   function consumeRemoteEvent(control, type, item) {
@@ -143,5 +162,5 @@
     }, true);
   }
 
-  globalThis.pegPartyPlayer = { read, apply };
+  globalThis.pegPartyPlayer = { read, apply, release };
 })();

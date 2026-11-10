@@ -30,7 +30,10 @@ summary { cursor: pointer; font-weight: 700; }
 .avatar-preview img { width: 100%; height: 100%; object-fit: cover; }
 #remove-avatar { margin-top: 4px; padding: 3px 6px; font-size: 11px; }
 #profile-color { width: 36px; height: 32px; padding: 2px; }
-#updates { margin-top: 8px; }
-#updates label { display: block; margin: 8px 0 4px; font-size: 13px; }
-#release-repo { width: 100%; }
-#release-link { color: #c3a6ff; display: inline-block; margin-top: 6px; }
+ .version { margin: 10px 0 0; color: #b8b3c9; font-size: 12px; }
+.version p { margin: 0; }
+.version .outdated { color: #ffe0a0; font-weight: 700; }
+#release-link { color: #c3a6ff; display: inline-block; margin-top: 4px; }
+#set-release-source { background: none; color: #c3a6ff; padding: 2px 0; font-size: 12px; }
+#release-source { display: flex; gap: 6px; margin-top: 5px; }
+#release-repo { flex: 1; }

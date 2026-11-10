@@ -1,4 +1,6 @@
 (() => {
+  const setup = document.querySelector("#set-release-source");
+  const form = document.querySelector("#release-source");
   const field = document.querySelector("#release-repo");
   const check = document.querySelector("#check-release");
   const label = document.querySelector("#release-status");
@@ -6,6 +8,9 @@
   const installed = chrome.runtime.getManifest().version;
   const defaultRepo = globalThis.PEGPARTY_RELEASE_REPO || "";
   const maxAge = 30 * 60 * 1000;
+  const current = `PegParty ${installed}`;
+  label.textContent = current;
+  setup.onclick = () => { form.hidden = false; field.focus(); };
 
   function repository(value) {
     const trimmed = value.trim().replace(/^https:\/\/github\.com\//i, "").replace(/\/$/, "").replace(/\.git$/i, "");
@@ -25,18 +30,19 @@
 
   function show(repo, tag) {
     const difference = compare(tag, installed);
-    label.textContent = difference > 0 ? `Update available · ${tag} (installed ${installed})` :
-      difference < 0 ? `Installed ${installed} is newer than the latest release (${tag}).` :
-      `You're up to date · ${installed}`;
+    label.textContent = difference > 0 ? `${current} · Update available (${tag})` :
+      difference < 0 ? `${current} · Ahead of ${tag}` : `${current} · Up to date`;
+    label.classList.toggle("outdated", difference > 0);
     link.href = `https://github.com/${repo}/releases/tag/${encodeURIComponent(tag)}`;
-    link.hidden = false;
-    link.textContent = difference > 0 ? "Open release downloads" : "View release";
+    link.hidden = difference <= 0;
   }
 
   async function run(repo, force) {
     link.hidden = true;
+    label.classList.remove("outdated");
+    setup.hidden = Boolean(repo);
     if (!repo) {
-      label.textContent = `Installed ${installed} · Enter a public GitHub repository to check releases.`;
+      label.textContent = current;
       return;
     }
     check.disabled = true;
@@ -46,7 +52,7 @@
         show(repo, releaseCache.tag);
         return;
       }
-      label.textContent = "Checking GitHub Releases…";
+      label.textContent = `${current} · Checking GitHub…`;
       const response = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, {
         headers: { Accept: "application/vnd.github+json" }, credentials: "omit",
         signal: AbortSignal.timeout(7000), redirect: "error"
@@ -58,13 +64,15 @@
       show(repo, tag);
       await chrome.storage.local.set({ releaseCache: { repo, tag, at: Date.now() } });
     } catch (error) {
-      label.textContent = error.message;
+      label.textContent = `${current} · ${error.message}`;
+      setup.hidden = Boolean(defaultRepo);
     } finally {
       check.disabled = false;
     }
   }
 
-  check.onclick = async () => {
+  form.onsubmit = async event => {
+    event.preventDefault();
     const repo = repository(field.value);
     if (field.value.trim() && !repo) {
       label.textContent = "Enter owner/repository or its GitHub URL.";
@@ -72,13 +80,15 @@
     }
     try {
       await chrome.storage.local.set({ releaseRepo: repo });
+      form.hidden = true;
       await run(repo || defaultRepo, true);
     } catch (error) {
-      label.textContent = error.message;
+      label.textContent = `${current} · ${error.message}`;
+      setup.hidden = Boolean(defaultRepo);
     }
   };
   chrome.storage.local.get("releaseRepo").then(({ releaseRepo }) => {
-    const repo = repository(releaseRepo || defaultRepo);
+    const repo = repository(defaultRepo || releaseRepo || "");
     field.value = repo;
     return run(repo, false);
   }).catch(error => { label.textContent = error.message; });
