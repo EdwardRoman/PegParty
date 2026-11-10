@@ -35,28 +35,29 @@ function updateSocial(session, data) {
 
 async function attachChat(entry) {
   const { session } = entry;
-  if (!session.social || !session.player || !entry.active) return;
-  const selected = session.player.documentId;
+  if (!session.social || !entry.active) return;
+  const selected = session.player?.documentId ?? null;
   if (entry.chatDocument === selected) return;
   if (entry.chatConnecting) return entry.chatConnecting;
   entry.chatConnecting = (async () => {
     const frames = await chrome.webNavigation.getAllFrames({ tabId: session.tabId });
     const frame = frames?.find(item => item.documentId === selected);
-    if (!frame) return;
     let outer = frame;
-    while (outer.frameId && outer.parentFrameId > 0) {
+    while (outer?.frameId && outer.parentFrameId > 0) {
       const parent = frames.find(item => item.frameId === outer.parentFrameId);
       if (!parent) break;
       outer = parent;
     }
-    const locator = { embedded: Boolean(outer.frameId), url: outer.url, key: outer.documentId };
-    const top = frames.find(item => item.frameId === 0);
+    const locator = outer ? { embedded: Boolean(outer.frameId), url: outer.url, key: outer.documentId } :
+      { pending: true };
+    const top = frames?.find(item => item.frameId === 0);
     if (!top) return;
-    if (!entry.active || session.player?.documentId !== selected) return;
+    const stillCurrent = () => entry.active && (session.player?.documentId ?? null) === selected;
+    if (!stillCurrent()) return;
     async function mount(documentId, view, fullscreenOnly) {
       const target = { tabId: session.tabId, documentIds: [documentId] };
       await chrome.scripting.executeScript({ target, files: ["chat-layout.js", "chat.js"] });
-      if (!entry.active || session.player?.documentId !== selected) return false;
+      if (!stillCurrent()) return false;
       // Configure in the exact isolated world that was just injected.
       return execute(options => globalThis.pegPartyChat?.configure(options),
         [{ locator: view, fullscreenOnly, open: Boolean(session.chatOpen) }], { tabId: session.tabId, documentId });
@@ -67,7 +68,7 @@ async function attachChat(entry) {
       await execute(key => window.parent.postMessage({ pegPartyDockKey: key }, "*"),
         [locator.key], { tabId: session.tabId, documentId: outer.documentId }).catch(() => {});
     }
-    if (entry.active && session.player?.documentId === selected) entry.chatDocument = selected;
+    if (stillCurrent()) entry.chatDocument = frame ? selected : null;
   })();
   try {
     return await entry.chatConnecting;
@@ -226,7 +227,7 @@ async function tick(entry) {
       return;
     }
     const selected = session.player;
-    if (selected) attachChat(entry).catch(() => {});
+    attachChat(entry).catch(() => {});
     const outcome = selected && await execute(settings => globalThis.pegPartyPlayer?.apply(settings),
       [{ ...state, position, sampledAt, revision, session: session.session, resync: session.resync }], selected)
       .catch(() => "missing");
@@ -286,12 +287,11 @@ async function handlePopup(message) {
   if (!entry?.active) return;
   if (message.type === "pegparty-toggle-chat") {
     if (!entry.session.social) throw new Error("The relay needs the PegParty chat update.");
-    if (!entry.session.player) throw new Error("Find the player before opening chat.");
     entry.session.chatOpen = !entry.session.chatOpen;
     await save(entry);
     await attachChat(entry);
-    if (entry.chatDocument !== entry.session.player?.documentId) {
-      throw new Error("The player is still connecting. Chat will open when it is ready.");
+    if (entry.chatDocument === undefined) {
+      throw new Error("Chat is still connecting. It will open when the page is ready.");
     }
   }
   if (message.type === "pegparty-leave") return stop(entry);

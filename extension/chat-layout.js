@@ -30,11 +30,16 @@
     return target;
   }
 
+  function hasGeometry(box) {
+    return box && box.width > 0 && box.height > 0;
+  }
+
   function mount(host, panel, arrow, toast, fullscreenButton) {
     let target, locator, targetWindow, original, open = false, scheduled = 0;
     let fullscreenOnly = false, managedFullscreen = false, nativeTarget;
     let dockWidth = 0;
     let below = false;
+    let targetVisible = false;
     let spacer;
     const properties = ["width", "max-width", "min-width", "translate", "height",
       "max-height", "position", "top", "left", "margin-top", "margin-left", "z-index"];
@@ -55,22 +60,35 @@
       observer.disconnect();
       target = next;
       if (target?.parentElement) observer.observe(target.parentElement);
+      if (target) observer.observe(target);
     }
 
     function position() {
       const box = target?.getBoundingClientRect();
       const full = document.fullscreenElement;
-      const usable = box && (!fullscreenOnly || full) && full?.tagName !== "IFRAME" &&
-        full?.tagName !== "VIDEO" && (!full || full.contains(target)) && box.width > 0 && box.height > 0;
+      const anchored = hasGeometry(box) && box.bottom > 0 && box.top < window.innerHeight &&
+        box.right > 0 && box.left < window.innerWidth;
+      const windowRail = locator && !fullscreenOnly && !full && !anchored && !below;
+      const usable = windowRail || (anchored && (!fullscreenOnly || full) && full?.tagName !== "IFRAME" &&
+        full?.tagName !== "VIDEO" && (!full || full.contains(target))) ||
+        (below && !full && !fullscreenOnly && hasGeometry(box));
       panel.hidden = !open || !usable;
       arrow.hidden = !usable;
-      fullscreenButton.hidden = !usable || fullscreenOnly;
+      fullscreenButton.hidden = !anchored || !usable || fullscreenOnly;
       toast.style.visibility = usable ? "visible" : "hidden";
       if (!open || !usable || !below) {
         spacer?.remove();
         spacer = undefined;
       }
       if (!usable) return;
+      if (windowRail) {
+        const width = Math.min(320, window.innerWidth * 0.84);
+        Object.assign(panel.style, { position: "fixed", left: `${window.innerWidth - width}px`,
+          top: "12px", width: `${width}px`, height: `${Math.max(140, window.innerHeight - 104)}px` });
+        Object.assign(arrow.style, { right: `${open ? width : 0}px`, top: "72px" });
+        Object.assign(toast.style, { right: "40px", top: "16px", maxWidth: `${width}px` });
+        return;
+      }
       const right = Math.min(window.innerWidth, box.right);
       const floating = full && open && !dockWidth;
       const railLeft = floating ? Math.max(0, right - Math.min(340, right * 0.4)) : Math.round(box.right);
@@ -84,13 +102,16 @@
         Object.assign(panel.style, { position: "fixed", left: `${Math.max(0, box.left)}px`,
           top: `${box.bottom + 8}px`, width: `${Math.min(box.width, window.innerWidth)}px`, height: "300px" });
       } else if (open) {
+        const panelTop = Math.max(0, box.top);
+        const visibleHeight = Math.min(box.bottom, window.innerHeight) - panelTop;
         Object.assign(panel.style, { position: "fixed", left: `${railLeft}px`,
-          top: `${box.top}px`, width: `${floating ? right - railLeft : dockWidth}px`,
-          height: `${floating ? Math.max(160, box.height - 85) : box.height}px` });
+          top: `${panelTop}px`, width: `${floating ? right - railLeft : dockWidth}px`,
+          height: `${floating ? Math.max(160, visibleHeight - 85) : visibleHeight}px` });
       }
       const edge = open && !below ? railLeft : right;
       const top = Math.max(8, box.top + 12);
-      const arrowTop = Math.max(top, box.top + Math.min(100, box.height * 0.3));
+      const arrowTop = Math.min(Math.max(8, window.innerHeight - 85),
+        Math.max(top, box.top + Math.min(100, box.height * 0.3)));
       Object.assign(arrow.style, { right: `${window.innerWidth - edge}px`, top: `${arrowTop}px` });
       Object.assign(fullscreenButton.style, { right: `${window.innerWidth - edge}px`, top: `${arrowTop + 40}px` });
       fullscreenButton.setAttribute("aria-label", full ? "Exit PegParty fullscreen" : "PegParty fullscreen");
@@ -106,12 +127,13 @@
         attach(null);
       }
       if (target && !target.isConnected) attach(null);
-      if (!target && locator) attach(findTarget(locator, targetWindow));
+      if (!target && locator && !locator.pending) attach(findTarget(locator, targetWindow));
       if (full && !["VIDEO", "IFRAME"].includes(full.tagName) && target?.contains(full) && target !== full) {
         nativeTarget = full;
         attach(full);
       }
       restore();
+      targetVisible = Boolean(hasGeometry(target?.getBoundingClientRect()));
       dockWidth = 0;
       below = false;
       if (!full) managedFullscreen = false;
@@ -129,8 +151,8 @@
           !["VIDEO", "IFRAME"].includes(full.tagName)))) {
         const box = target.getBoundingClientRect();
         const available = Math.min(box.width, window.innerWidth - Math.max(0, box.left));
-        if (available >= 690) {
-          dockWidth = Math.min(340, Math.max(250, Math.round(available * 0.27)));
+        if (available >= 520) {
+          dockWidth = Math.min(340, Math.max(208, Math.round(available * 0.27)));
           const css = getComputedStyle(target);
           const border = css.boxSizing === "border-box" ? 0 :
             ["paddingLeft", "paddingRight", "borderLeftWidth", "borderRightWidth"]
@@ -180,16 +202,23 @@
     return {
       configure(value, frameOnly) {
         fullscreenOnly = frameOnly;
-        if (locator?.key !== value.key || locator?.url !== value.url || locator?.embedded !== value.embedded) {
+        if (locator?.key !== value.key || locator?.url !== value.url || locator?.embedded !== value.embedded ||
+            locator?.pending !== value.pending) {
           targetWindow = null;
           attach(null);
         }
         locator = value;
         layout();
       },
-      show(value) { open = value; layout(); },
+      show(value) {
+        open = value;
+        layout();
+        if (open && below && panel.getBoundingClientRect().top > window.innerHeight - 100) {
+          window.scrollBy(0, panel.getBoundingClientRect().bottom - window.innerHeight + 8);
+        }
+      },
       refresh() {
-        if (!target?.isConnected) layout();
+        if (!target?.isConnected || targetVisible !== Boolean(hasGeometry(target.getBoundingClientRect()))) layout();
       },
       async fullscreen() {
         if (document.fullscreenElement) {

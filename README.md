@@ -23,7 +23,9 @@ click **Save profile**. PegParty uses a small square thumbnail for the avatar.
 After joining or creating a party, click the **‹** arrow on the right edge
 of the player or **Toggle chat** in the toolbar dropdown. The chat docks
 to the right of the resized player. Click **›** beside the chat to restore
-the player's original width. On a narrow window, chat goes below the player.
+the player's original width. In narrow windows, chat can go below the player.
+If the player is still loading, the chat is available at the right edge of
+the page and docks beside the player as soon as it is found.
 
 Use **⛶** beside the arrow for PegParty fullscreen with chat and message
 previews. Site fullscreen also works when the site fullscreen target is a
@@ -42,7 +44,7 @@ of this folder to its root. Include `.github/workflows/release.yml`. The
 source code is MIT-licensed. The user-supplied icon artwork is separate.
 
 Publish a GitHub Release with a tag matching the extension's manifest
-version, such as `v0.4.1`. The included workflow attaches `PegParty.zip`
+version, such as `v0.4.2`. The included workflow attaches `PegParty.zip`
 and sets that release repository as the default in the downloaded extension.
 
 The toolbar footer shows the installed version and a **Get update** link
