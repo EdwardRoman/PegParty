@@ -162,6 +162,7 @@ async function start({ tabId, movie, origin, action, code, player }) {
       throw error;
     }
     if (action === "join") chrome.action.setBadgeText({ tabId, text: "" }).catch(() => {});
+    attachChat(entry).catch(() => {});
     schedule(entry, 0);
   } finally {
     starting.delete(tabId);
@@ -285,15 +286,6 @@ async function handlePopup(message) {
   }
   const entry = rooms.get(message.tabId);
   if (!entry?.active) return;
-  if (message.type === "pegparty-toggle-chat") {
-    if (!entry.session.social) throw new Error("The relay needs the PegParty chat update.");
-    entry.session.chatOpen = !entry.session.chatOpen;
-    await save(entry);
-    await attachChat(entry);
-    if (entry.chatDocument === undefined) {
-      throw new Error("Chat is still connecting. It will open when the page is ready.");
-    }
-  }
   if (message.type === "pegparty-leave") return stop(entry);
   if (message.type === "pegparty-resync") {
     entry.session.resync++;

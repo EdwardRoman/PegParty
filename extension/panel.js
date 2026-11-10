@@ -21,7 +21,6 @@ function render() {
   get("scan").disabled = get("allow").disabled = busy || scanning;
   get("pair").disabled = busy;
   get("leave").disabled = get("resync").disabled = busy;
-  get("chat").disabled = !room?.social;
   if (room) get("members").textContent = room.social ?
     `${room.members} connected · Shared controls` : `${room.members} connected · Chat requires the relay update`;
 }
@@ -170,14 +169,6 @@ get("leave").onclick = () => {
 };
 get("resync").onclick = () => {
   message("pegparty-resync").catch(error => status(error.message));
-};
-get("chat").onclick = async () => {
-  try {
-    await message("pegparty-toggle-chat");
-    window.close();
-  } catch (error) {
-    status(error.message);
-  }
 };
 get("copy").onclick = async () => {
   if (!room) return;

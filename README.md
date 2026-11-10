@@ -21,31 +21,23 @@ color, and avatar on this browser. Upload a PNG, JPEG, WebP, or GIF, then
 click **Save profile**. PegParty uses a small square thumbnail for the avatar.
 
 After joining or creating a party, click the **‹** arrow on the right edge
-of the player or **Toggle chat** in the toolbar dropdown. The chat docks
-to the right of the resized player. Click **›** beside the chat to restore
+to open chat beside the resized player. Click **›** beside the chat to restore
 the player's original width. In narrow windows, chat can go below the player.
 If the player is still loading, the chat is available at the right edge of
 the page and docks beside the player as soon as it is found.
 
-Use **⛶** beside the arrow for PegParty fullscreen with chat and message
-previews. Site fullscreen also works when the site fullscreen target is a
-player container. If the site's button fullscreens the video element by
-itself, exit that mode and use PegParty's **⛶** button.
+Use the player's fullscreen button for fullscreen with chat and message
+previews when the site fullscreen target is a player container. The chat
+composer keeps typed keys separate from player shortcuts. If a site uses
+video-only fullscreen, use the browser's fullscreen mode (F11 on Windows)
+to keep the chat visible.
 
 Use **Members** to see everyone in the room. The feed shows messages and who
 joined, left, paused, resumed, skipped, or changed speed. New messages from
-other members briefly appear near the top of the video. The relay keeps the
-latest 100 entries in memory for the life of the room.
+other members briefly appear near the top of the video while chat is closed.
+The relay keeps the latest 100 entries in memory for the life of the room.
 
 ## GitHub releases and update checks
-
-Create a public GitHub repository named `PegParty` and push the contents
-of this folder to its root. Include `.github/workflows/release.yml`. The
-source code is MIT-licensed. The user-supplied icon artwork is separate.
-
-Publish a GitHub Release with a tag matching the extension's manifest
-version, such as `v0.4.2`. The included workflow attaches `PegParty.zip`
-and sets that release repository as the default in the downloaded extension.
 
 The toolbar footer shows the installed version and a **Get update** link
 when GitHub has a newer full release. If you installed the ZIP outside
@@ -103,8 +95,8 @@ default in `extension/config.js`.
    player domain and the party connection.
 3. Click **Join party**, then close the dropdown or go fullscreen. Anyone can
    use the movie’s play, pause, seek, and speed controls. Reopen the dropdown
-   to copy an invite, **Resync**, or **Leave**. Closing the movie tab or
-   navigating away from the movie ends your connection.
+   to copy an invite, **Resync** your player to the party, or **Leave**.
+   Closing the movie tab or navigating away from the movie ends your connection.
 
 If Chrome blocks an automatic resume, PegParty asks you to press **Play** on
 the video itself. If you see a different video length or trouble connecting

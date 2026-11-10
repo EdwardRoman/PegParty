@@ -11,13 +11,13 @@
     * { box-sizing: border-box; }
     section { position: fixed; display: flex; flex-direction: column; background: #171824; border: 1px solid #48405b; border-radius: 15px; overflow: hidden;
       box-shadow: 0 10px 40px #0008; }
-    header, form { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px; }
+    header { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px; }
     header { background: #242032; border-bottom: 1px solid #48405b; }
     header strong { flex: 1; }
-    button, input { font: inherit; color: inherit; border: 1px solid #5a506c; border-radius: 7px; padding: 6px 8px; }
+    button { font: inherit; color: inherit; border: 1px solid #5a506c; border-radius: 7px; padding: 6px 8px; }
     button { background: #332d44; cursor: pointer; font-weight: 600; }
     button:disabled { opacity: .55; cursor: default; }
-    button:focus-visible, input:focus-visible { outline: 2px solid #c3a6ff; outline-offset: 2px; }
+    button:focus-visible { outline: 2px solid #c3a6ff; outline-offset: 2px; }
     .feed { overflow: auto; flex: 1; min-height: 0; padding: 8px 12px; }
     .feed p { margin: 5px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
     .activity { color: #b8b3c9; font-size: 12px; }
@@ -28,20 +28,21 @@
     .avatar { width: 28px; height: 28px; display: grid; place-items: center; background: #3d3450;
       border-radius: 50%; overflow: hidden; flex: 0 0 auto; font-weight: 700; }
     .avatar canvas { width: 100%; height: 100%; object-fit: cover; }
-    form { border-top: 1px solid #48405b; }
-    input { background: #11121b; flex: 1; min-width: 0; }
-    form button { background: #bc9df8; color: #20122e; }
+    .composer { border: 0; border-top: 1px solid #48405b; display: block; width: 100%; height: 54px; flex: 0 0 auto; }
+    .composer-form { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; padding: 10px; }
+    .composer-form input { box-sizing: border-box; min-width: 0; flex: 1; font: inherit; color: inherit;
+      background: #11121b; border: 1px solid #5a506c; border-radius: 7px; padding: 6px 8px; }
+    .composer-form button { background: #bc9df8; color: #20122e; }
     .show, .toast { position: fixed; background: #171824ed; border: 1px solid #5a506c; box-shadow: 0 3px 14px #0007; }
-    .show, .fullscreen { border-radius: 6px 0 0 6px; width: 32px; height: 36px;
+    .show { border-radius: 6px 0 0 6px; width: 32px; height: 36px;
       padding: 0; text-align: center; font-size: 21px; }
-    .fullscreen { position: fixed; background: #171824ed; font-size: 16px; }
     .toast { pointer-events: none; padding: 9px 12px; border-radius: 9px; overflow-wrap: anywhere; }
     .status { padding: 0 10px 8px; margin: 0; color: #b8b3c9; font-size: 12px; }
   `);
   root.adoptedStyleSheets = [styles];
 
   function make(parent, tag, text, className) {
-    const element = document.createElement(tag);
+    const element = parent.ownerDocument.createElement(tag);
     if (text) element.textContent = text;
     if (className) element.className = className;
     parent.append(element);
@@ -54,9 +55,7 @@
   reveal.hidden = true;
   const toast = make(root, "div", "", "toast");
   toast.hidden = true;
-  const fullscreen = make(root, "button", "⛶", "fullscreen");
-  fullscreen.hidden = true;
-  const layout = globalThis.pegPartyChatLayout.mount(host, panel, reveal, toast, fullscreen);
+  const layout = globalThis.pegPartyChatLayout.mount(host, panel, reveal, toast);
   panel.setAttribute("aria-label", "PegParty chat");
   const header = make(panel, "header");
   make(header, "strong", "PegParty chat");
@@ -68,13 +67,8 @@
   const feed = make(panel, "div", "", "feed");
   feed.setAttribute("role", "log");
   feed.setAttribute("aria-label", "Chat and party activity");
-  const form = make(panel, "form");
-  const input = make(form, "input");
-  input.maxLength = 500;
-  input.placeholder = "Write a message…";
-  input.setAttribute("aria-label", "Chat message");
-  const send = make(form, "button", "Send");
-  send.type = "submit";
+  const composerFrame = make(panel, "iframe", "", "composer");
+  composerFrame.title = "PegParty message composer";
   const status = make(panel, "p", "", "status");
   status.setAttribute("role", "status");
   status.hidden = true;
@@ -85,7 +79,71 @@
   let savingVisibility = false;
   let reading = false;
   let room, cursor, rosterVersion;
+  let composer, draft = "", submitting = false, connected = false;
   document.documentElement.append(host);
+
+  function composerState() {
+    if (!composer) return;
+    composer.input.disabled = !connected;
+    composer.send.disabled = !connected || submitting;
+  }
+
+  function mountComposer() {
+    const doc = composerFrame.contentDocument;
+    const isolated = Boolean(doc?.body);
+    const composerDocument = isolated ? doc : document;
+    if (composer?.document === composerDocument) return;
+    composer?.form.remove();
+    composerFrame.hidden = !isolated;
+    // A separate document keeps the site's capture-phase shortcuts from seeing typed keys.
+    if (isolated) {
+      const sheet = new doc.defaultView.CSSStyleSheet();
+      sheet.replaceSync(`
+        :root { color-scheme: dark; font: 14px/1.45 system-ui, sans-serif; color: #f2effa; }
+        body { margin: 0; }
+        .composer-form { display: flex; gap: 8px; align-items: center; padding: 10px; }
+        input, button { box-sizing: border-box; font: inherit; border: 1px solid #5a506c;
+          border-radius: 7px; padding: 6px 8px; }
+        input { color: inherit; background: #11121b; flex: 1; min-width: 0; }
+        button { background: #bc9df8; color: #20122e; font-weight: 600; cursor: pointer; }
+        button:disabled { opacity: .55; cursor: default; }
+        :focus-visible { outline: 2px solid #c3a6ff; outline-offset: 2px; }
+      `);
+      doc.adoptedStyleSheets = [sheet];
+    }
+    const form = make(isolated ? doc.body : panel, "div", "", "composer-form");
+    if (!isolated) panel.insertBefore(form, status);
+    const input = make(form, "input");
+    input.maxLength = 500;
+    input.placeholder = "Write a message…";
+    input.setAttribute("aria-label", "Chat message");
+    input.value = draft;
+    input.oninput = () => { draft = input.value; };
+    const send = make(form, "button", "Send");
+    send.type = "button";
+    send.onclick = sendChat;
+    if (isolated) input.onkeydown = submitOnEnter;
+    composer = { document: composerDocument, form, input, send };
+    composerState();
+  }
+
+  composerFrame.addEventListener("load", mountComposer);
+  mountComposer();
+
+  function submitOnEnter(event) {
+    if (event.key !== "Enter" || event.isComposing || event.repeat) return;
+    event.preventDefault();
+    sendChat();
+  }
+
+  // Opaque sandboxed players can deny access to the composer iframe.
+  for (const type of ["keydown", "keypress", "keyup"]) {
+    window.addEventListener(type, event => {
+      if (composer?.document !== document || event.target !== host || root.activeElement !== composer.input) return;
+      event.stopImmediatePropagation();
+      if (type === "keydown") submitOnEnter(event);
+    }, true);
+  }
 
   function toggle(show) {
     open = show;
@@ -94,7 +152,15 @@
     reveal.setAttribute("aria-label", reveal.title);
     reveal.setAttribute("aria-expanded", String(show));
     layout.show(show);
-    if (show) feed.scrollTop = feed.scrollHeight;
+    if (show) {
+      dismissToast();
+      feed.scrollTop = feed.scrollHeight;
+    }
+  }
+
+  function dismissToast() {
+    clearTimeout(toastTimer);
+    toast.hidden = true;
   }
 
   async function changeVisibility(show) {
@@ -110,7 +176,6 @@
 
   reveal.onclick = () => changeVisibility(!open).catch(error => showStatus(error.message));
   hide.onclick = () => changeVisibility(false).catch(error => showStatus(error.message));
-  fullscreen.onclick = () => layout.fullscreen().catch(error => showStatus(error.message));
   members.onclick = () => {
     roster.hidden = !roster.hidden;
     members.setAttribute("aria-expanded", String(!roster.hidden));
@@ -190,10 +255,12 @@
         feed.replaceChildren();
         renderRoster([]);
         showStatus("This party has ended.");
-        input.disabled = send.disabled = true;
+        connected = false;
+        draft = "";
+        if (composer) composer.input.value = "";
+        composerState();
         clearInterval(timer);
-        clearTimeout(toastTimer);
-        toast.hidden = true;
+        dismissToast();
         host.hidden = true;
         layout.reset();
         return;
@@ -201,6 +268,7 @@
       if (!response || response.error) throw new Error(response?.error || "Could not load chat.");
       const changed = room !== response.room;
       if (changed) {
+        dismissToast();
         feed.replaceChildren();
         showStatus("");
       }
@@ -213,7 +281,7 @@
       if (response.roster) renderRoster(response.roster);
       const following = changed || feed.scrollHeight - feed.scrollTop - feed.clientHeight < 40;
       for (const event of response.events) appendEvent(event);
-      const incoming = changed ? null : response.events.findLast(event =>
+      const incoming = open || changed ? null : response.events.findLast(event =>
         event.type === "chat" && event.memberId !== response.self);
       if (incoming) {
         toast.replaceChildren();
@@ -226,8 +294,8 @@
       }
       while (feed.childElementCount > 100) feed.firstElementChild.remove();
       if (following) feed.scrollTop = feed.scrollHeight;
-      input.disabled = false;
-      if (!submitting) send.disabled = false;
+      connected = true;
+      composerState();
     } catch (error) {
       showStatus(error.message);
     } finally {
@@ -235,26 +303,27 @@
     }
   }
 
-  let submitting = false;
-  form.onsubmit = async event => {
-    event.preventDefault();
-    const value = input.value.trim();
-    if (!value || submitting) return;
+  async function sendChat() {
+    const value = composer?.input.value.trim();
+    if (!value || !connected || submitting) return;
     submitting = true;
-    send.disabled = true;
+    composerState();
     try {
       const response = await chrome.runtime.sendMessage({ type: "pegparty-send-chat", value });
       if (!response?.ok) throw new Error(response?.error || "This party has ended.");
-      if (input.value.trim() === value) input.value = "";
+      if (composer?.input.value.trim() === value) {
+        composer.input.value = "";
+        draft = "";
+      }
       showStatus("");
       refresh();
     } catch (error) {
       showStatus(error.message);
     } finally {
       submitting = false;
-      send.disabled = input.disabled;
+      composerState();
     }
-  };
+  }
 
   globalThis.pegPartyChat = {
     configure({ locator, fullscreenOnly, open }) {
