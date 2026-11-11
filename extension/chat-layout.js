@@ -214,7 +214,8 @@
         }
       },
       refresh() {
-        if (!target?.isConnected || targetVisible !== Boolean(hasGeometry(target.getBoundingClientRect()))) layout();
+        if (!host.isConnected || !target?.isConnected ||
+            targetVisible !== Boolean(hasGeometry(target.getBoundingClientRect()))) layout();
       },
       reset() { open = false; locator = targetWindow = null; attach(null); position(); }
     };

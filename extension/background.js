@@ -39,6 +39,7 @@ async function attachChat(entry) {
   const selected = session.player?.documentId ?? null;
   if (entry.chatDocument === selected) return;
   if (entry.chatConnecting) return entry.chatConnecting;
+  const navigation = entry.chatNavigation;
   entry.chatConnecting = (async () => {
     const frames = await chrome.webNavigation.getAllFrames({ tabId: session.tabId });
     const frame = frames?.find(item => item.documentId === selected);
@@ -51,8 +52,9 @@ async function attachChat(entry) {
     const locator = outer ? { embedded: Boolean(outer.frameId), url: outer.url, key: outer.documentId } :
       { pending: true };
     const top = frames?.find(item => item.frameId === 0);
-    if (!top) return;
-    const stillCurrent = () => entry.active && (session.player?.documentId ?? null) === selected;
+    if (!top || movieUrl(top.url) !== session.movie) return;
+    const stillCurrent = () => entry.active && entry.chatNavigation === navigation &&
+      (session.player?.documentId ?? null) === selected;
     if (!stillCurrent()) return;
     async function mount(documentId, view, fullscreenOnly) {
       const target = { tabId: session.tabId, documentIds: [documentId] };
@@ -64,7 +66,7 @@ async function attachChat(entry) {
     }
     if (!await mount(top.documentId, locator, false)) return;
     if (locator.embedded) {
-      await mount(selected, { embedded: false, key: selected }, true).catch(() => {});
+      if (!await mount(selected, { embedded: false, key: selected }, true)) return;
       await execute(key => window.parent.postMessage({ pegPartyDockKey: key }, "*"),
         [locator.key], { tabId: session.tabId, documentId: outer.documentId }).catch(() => {});
     }
@@ -184,6 +186,8 @@ async function tick(entry) {
   try {
     await entry.write;
     if (!entry.active) return;
+    // Retry chat injection even when the relay is temporarily unreachable.
+    attachChat(entry).catch(() => {});
     const sent = performance.now();
     const social = { after: session.social?.cursor, rosterVersion: session.social?.rosterVersion };
     const data = await api(session.origin, "sync", { code: session.code, token: session.token, command, social });
@@ -321,8 +325,14 @@ async function handleChat(message, sender) {
   await ready;
   const entry = rooms.get(sender.tab?.id);
   if (!sender.url || !entry?.active || !entry.session.social) return { ended: true };
-  const sameMovie = sender.frameId === 0 ? movieUrl(sender.url) === entry.session.movie :
-    sender.documentId === entry.session.player?.documentId;
+  let sameMovie = sender.documentId === entry.session.player?.documentId;
+  if (sender.frameId === 0) {
+    // The sender URL can describe the original document before an in-page navigation.
+    const top = await chrome.webNavigation.getFrame({ tabId: entry.session.tabId, frameId: 0 }).catch(() => null);
+    if (!entry.active) return { ended: true };
+    if (!top) return { error: "Waiting for the watch page to finish loading." };
+    sameMovie = sender.documentId === top.documentId && movieUrl(top.url) === entry.session.movie;
+  }
   if (!sameMovie) return { ended: true };
   if (message.type === "pegparty-chat-visibility") {
     entry.session.chatOpen = Boolean(message.open);
@@ -376,14 +386,20 @@ chrome.tabs.onRemoved.addListener(tabId => {
   ready.then(() => stop(rooms.get(tabId))).catch(console.error);
 });
 
-function navigation(details) {
+function navigation(details, committed = false) {
   if (details.frameId !== 0) return;
   ready.then(() => {
     const entry = rooms.get(details.tabId);
-    if (entry?.active && movieUrl(details.url) !== entry.session.movie) return stop(entry);
+    if (!entry?.active) return;
+    if (movieUrl(details.url) !== entry.session.movie) return stop(entry);
+    if (committed) {
+      entry.chatNavigation = details.documentId;
+      entry.chatDocument = undefined;
+      attachChat(entry).catch(() => {});
+    }
   }).catch(console.error);
 }
-chrome.webNavigation.onCommitted.addListener(navigation);
+chrome.webNavigation.onCommitted.addListener(details => navigation(details, true));
 chrome.webNavigation.onHistoryStateUpdated.addListener(navigation);
 chrome.webNavigation.onReferenceFragmentUpdated.addListener(navigation);
 
