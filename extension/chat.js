@@ -20,6 +20,9 @@
     button:focus-visible { outline: 2px solid #c3a6ff; outline-offset: 2px; }
     .feed { overflow: auto; flex: 1; min-height: 0; padding: 8px 12px; }
     .feed p { margin: 5px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .chat-message { display: flex; align-items: flex-start; gap: 8px; }
+    .chat-message .avatar { width: 24px; height: 24px; font-size: 12px; }
+    .message-text { min-width: 0; }
     .activity { color: #b8b3c9; font-size: 12px; }
     .time { color: #aea8bd; margin-right: 7px; font-variant-numeric: tabular-nums; }
     .name { font-weight: 700; }
@@ -79,6 +82,7 @@
   let savingVisibility = false;
   let reading = false;
   let room, cursor, rosterVersion;
+  let rosterById = new Map();
   let composer, draft = "", submitting = false, connected = false;
   document.documentElement.append(host);
 
@@ -190,27 +194,32 @@
     if (/^#[a-f0-9]{6}$/i.test(color)) label.style.color = color;
   }
 
+  function appendAvatar(parent, name, image) {
+    const avatar = make(parent, "span", "", "avatar");
+    avatar.setAttribute("aria-hidden", "true");
+    avatar.textContent = [...name][0]?.toUpperCase() || "?";
+    if (!/^data:image\/webp;base64,[A-Za-z0-9+/]+={0,2}$/.test(image)) return;
+    const bytes = Uint8Array.from(atob(image.slice("data:image/webp;base64,".length)),
+      character => character.charCodeAt(0));
+    createImageBitmap(new Blob([bytes], { type: "image/webp" })).then(bitmap => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = canvas.height = 56;
+        canvas.getContext("2d").drawImage(bitmap, 0, 0, 56, 56);
+        avatar.replaceChildren(canvas);
+      } finally {
+        bitmap.close();
+      }
+    }).catch(() => {});
+  }
+
   function renderRoster(list) {
+    rosterById = new Map(list.map(member => [member.id, member]));
     roster.replaceChildren();
     members.textContent = `Members (${list.length})`;
     for (const member of list) {
       const row = make(roster, "div", "", "member");
-      const avatar = make(row, "span", "", "avatar");
-      avatar.textContent = [...member.name][0]?.toUpperCase() || "?";
-      if (/^data:image\/webp;base64,[A-Za-z0-9+/]+={0,2}$/.test(member.avatar)) {
-        const bytes = Uint8Array.from(atob(member.avatar.slice("data:image/webp;base64,".length)),
-          character => character.charCodeAt(0));
-        createImageBitmap(new Blob([bytes], { type: "image/webp" })).then(bitmap => {
-          try {
-            const canvas = document.createElement("canvas");
-            canvas.width = canvas.height = 56;
-            canvas.getContext("2d").drawImage(bitmap, 0, 0, 56, 56);
-            avatar.replaceChildren(canvas);
-          } finally {
-            bitmap.close();
-          }
-        }).catch(() => {});
-      }
+      appendAvatar(row, member.name, member.avatar);
       colored(row, member.name, member.color);
     }
   }
@@ -224,15 +233,18 @@
   }
 
   function appendEvent(event) {
-    const row = make(feed, "p", "", event.type === "chat" ? "" : "activity");
-    make(row, "span", new Date(event.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }), "time");
-    colored(row, event.name, event.color);
+    const chat = event.type === "chat";
+    const row = make(feed, "p", "", chat ? "chat-message" : "activity");
+    if (chat) appendAvatar(row, event.name, rosterById.get(event.memberId)?.avatar);
+    const text = chat ? make(row, "span", "", "message-text") : row;
+    make(text, "span", new Date(event.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }), "time");
+    colored(text, event.name, event.color);
     const labels = {
       join: " joined the party", leave: " left the party", disconnect: " disconnected",
       play: " resumed playback", pause: " paused playback",
       seek: ` skipped to ${timestamp(event.value)}`, rate: ` changed speed to ${event.value}×`
     };
-    row.append(document.createTextNode(event.type === "chat" ? `: ${event.message}` : labels[event.type] || ""));
+    text.append(document.createTextNode(chat ? `: ${event.message}` : labels[event.type] || ""));
   }
 
   function showStatus(text) {
@@ -246,6 +258,7 @@
     const visibilityAtRequest = visibilityChange;
     const mayApplyVisibility = !savingVisibility;
     try {
+      layout.refresh();
       const response = await chrome.runtime.sendMessage({
         type: "pegparty-chat-state", after: cursor, rosterVersion, room
       });
@@ -274,7 +287,6 @@
       }
       if (mayApplyVisibility && visibilityAtRequest === visibilityChange && typeof response.open === "boolean" &&
           response.open !== open) toggle(response.open);
-      layout.refresh();
       room = response.room;
       cursor = response.cursor;
       rosterVersion = response.rosterVersion;
